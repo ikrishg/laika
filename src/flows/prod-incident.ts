@@ -7,10 +7,7 @@ import {
   fixAgentSignature,
 } from "../agents/fix-agent.js";
 import { log } from "../adapters/logger.js";
-import {
-  buildDrillIncidentSignal,
-  deriveIncidentSignalFromHealth,
-} from "./incident-signal.js";
+import { resolveIncidentSignalFromHealth } from "./incident-signal.js";
 
 export interface ProdIncidentFlowInput {
   /** Optional injected signal; otherwise derived from health check */
@@ -44,35 +41,32 @@ export async function runProdIncidentFlow(
   const actor = fixAgentActor();
   const health = await observability.checkHealth();
 
-  let signal: IncidentSignal | null = input.signal ?? null;
-  if (!signal) {
-    if (health.ok && !input.drill) {
-      log("info", "flow-prod-incident", "Skipping — target healthy, no signal", {
-        url: health.url,
-      });
-      await observability.recordEvent({
-        type: "prod_incident_flow_skipped",
-        flow: "prod-incident",
-        payload: { reason: "healthy_no_signal", healthOk: true, url: health.url },
-        recordedAt: new Date().toISOString(),
-      });
-      return {
-        flow: "prod-incident",
-        success: true,
-        skipped: true,
-        skipReason: "healthy_no_signal",
-        healthChecked: true,
-        healthOk: true,
-        mergeRequestCreated: false,
-        slackNotified: false,
-        dryRunSlack: true,
-        fixAgentSignature: fixAgentSignature(),
-        humanMergeRequired: true,
-      };
-    }
-    signal = input.drill
-      ? buildDrillIncidentSignal(health)
-      : deriveIncidentSignalFromHealth(health);
+  let signal: IncidentSignal | null =
+    input.signal ?? resolveIncidentSignalFromHealth(health, { drill: input.drill });
+
+  if (!signal && health.ok) {
+    log("info", "flow-prod-incident", "Skipping — target healthy, no signal", {
+      url: health.url,
+    });
+    await observability.recordEvent({
+      type: "prod_incident_flow_skipped",
+      flow: "prod-incident",
+      payload: { reason: "healthy_no_signal", healthOk: true, url: health.url },
+      recordedAt: new Date().toISOString(),
+    });
+    return {
+      flow: "prod-incident",
+      success: true,
+      skipped: true,
+      skipReason: "healthy_no_signal",
+      healthChecked: true,
+      healthOk: true,
+      mergeRequestCreated: false,
+      slackNotified: false,
+      dryRunSlack: true,
+      fixAgentSignature: fixAgentSignature(),
+      humanMergeRequired: true,
+    };
   }
 
   if (!signal) {

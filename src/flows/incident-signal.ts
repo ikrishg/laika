@@ -24,3 +24,19 @@ export function buildDrillIncidentSignal(health: HealthSnapshot): IncidentSignal
     metadata: { url: health.url, latencyMs: health.latencyMs, drill: true },
   };
 }
+
+/**
+ * Drill only synthesizes an incident when health is OK. Failed health always wins.
+ */
+export function resolveIncidentSignalFromHealth(
+  health: HealthSnapshot,
+  options: { drill?: boolean },
+): IncidentSignal | null {
+  if (!health.ok) {
+    return deriveIncidentSignalFromHealth(health);
+  }
+  if (options.drill) {
+    return buildDrillIncidentSignal(health);
+  }
+  return null;
+}
