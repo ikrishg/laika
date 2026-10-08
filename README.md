@@ -99,6 +99,27 @@ SAMPLE_APP_ERROR=1 node examples/sample-app/server.js
 TARGET_APP_URL=http://localhost:3456 npm run flow:prod-incident
 ```
 
+## Dry-run MCP layer (AC-L1)
+
+`src/mcp/` exposes three MCP tools (MCP TypeScript SDK). The prod-incident flow runs unchanged; it is handed MCP-backed adapters so every forge, Slack, and observability step goes through a tool call.
+
+| Tool | Surface | Behavior in this build |
+|------|---------|------------------------|
+| `ingest_error_event` | Observability | Sentry-style error event from a fixture (or inline payload) → incident signal. |
+| `create_draft_mr` | GitLab | Records a fixture **draft** MR with a deterministic SHA. Never calls GitLab. |
+| `stage_notify` | Slack | Stages the message in an outbox. **Never sends**, even if `SLACK_WEBHOOK_URL` is set. |
+
+There is no merge, deploy, or push tool. The MCP GitLab adapter routes merge attempts through the existing merge guard (`HumanGateViolation` for `laika-agent:*`).
+
+```bash
+npm run mcp:dry-run   # error event -> fixture draft MR -> staged Slack; writes reports/ac-l1-dry-run.{html,json}
+npm run mcp:serve     # same tools over stdio for an MCP client
+```
+
+Open `reports/ac-l1-dry-run.html` for the click path (Overview → 1 Error event → 2 Draft MR → 3 Staged Slack); the header shows the run commit SHA and the fixture MR SHA.
+
+Fixture/live switch: `LAIKA_MCP_LIVE=1` requests live paths, and each tool also needs its credentials (`GITLAB_TOKEN`+`GITLAB_PROJECT_ID`, `SLACK_WEBHOOK_URL`, `SENTRY_AUTH_TOKEN`+`SENTRY_ORG`+`SENTRY_PROJECT`). Live paths are additionally locked off in this build (`LIVE_PATHS_ENABLED_IN_THIS_BUILD = false`) because the signed cut gates live GitLab, Slack notify, and the live app URL until the MIT source import lands. Each tool result reports its effective mode and why.
+
 ## Importing the MIT target app (later)
 
 1. Vendor the chosen app under `target/` with its `LICENSE` intact.
