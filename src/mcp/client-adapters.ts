@@ -77,6 +77,7 @@ export function createMcpGitLabAdapter(conn: McpConnection): GitLabAdapter {
         webUrl: mr.webUrl,
         sourceBranch: mr.sourceBranch,
         targetBranch: mr.targetBranch,
+        dryRun: true,
       };
     },
 

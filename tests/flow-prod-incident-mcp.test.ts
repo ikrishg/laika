@@ -34,12 +34,14 @@ describe("AC-L1: prod-incident flow through the MCP layer", () => {
     ]);
     expect(run.flow).toMatchObject({
       flow: "prod-incident",
+      success: true,
       mergeRequestCreated: true,
       slackNotified: false,
       dryRunSlack: true,
       humanMergeRequired: true,
     });
-    expect(run.flow.signal.message).toBe(run.ingest.signal.message);
+    expect(run.flow.skipped).toBeFalsy();
+    expect(run.flow.signal?.message).toBe(run.ingest.signal.message);
     expect(run.draftMr.draft).toBe(true);
     expect(run.draftMr.actorId).toBe("laika-agent:fix-writer");
     expect(run.draftMr.mergeGate.allowed).toBe(false);
