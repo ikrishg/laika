@@ -1,0 +1,24 @@
+{
+  "name": "laika",
+  "version": "0.1.0",
+  "description": "Path B supervised watchdog harness for GitLab Transcend hackathon",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "flow:prod-incident": "node --import tsx src/cli/run-flow.ts prod-incident",
+    "flow:pr-exercise": "node --import tsx src/cli/run-flow.ts pr-exercise",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
