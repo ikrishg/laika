@@ -28,6 +28,7 @@ export async function runHarness(options: HarnessRunOptions) {
   if (options.flow === "prod-incident") {
     return runProdIncidentFlow(observability, gitlab, slack, {
       signal: options.incidentSignal,
+      drill: config.incidentDrill,
     });
   }
 

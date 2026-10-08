@@ -1,5 +1,11 @@
 import type { HarnessConfig } from "../config/env.js";
+import { fetchWithTimeout } from "./http.js";
 import { log } from "./logger.js";
+import {
+  simulatedPush,
+  unsupportedLivePush,
+  type PushFixResult,
+} from "./push-result.js";
 
 export interface PullRequestContext {
   number: number;
@@ -14,7 +20,7 @@ export interface GitHubAdapter {
     prNumber: number,
     commitMessage: string,
     actorId: string,
-  ): Promise<{ commitSha: string; dryRun: boolean }>;
+  ): Promise<PushFixResult>;
 }
 
 export function createGitHubAdapter(config: HarnessConfig): GitHubAdapter {
@@ -33,7 +39,7 @@ export function createGitHubAdapter(config: HarnessConfig): GitHubAdapter {
         };
       }
 
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
         {
           headers: {
@@ -73,13 +79,13 @@ export function createGitHubAdapter(config: HarnessConfig): GitHubAdapter {
           distinction:
             "Custom laika fix-agent commit — supervised; human must merge",
         });
-        return { commitSha: `dry-run-gh-${Date.now()}`, dryRun: true };
+        return simulatedPush(`dry-run-gh-${Date.now()}`);
       }
 
       log("warn", "github-adapter", "Live git push not implemented in harness stub", {
         prNumber,
       });
-      return { commitSha: "stub", dryRun: false };
+      return unsupportedLivePush("live_git_push_not_implemented");
     },
   };
 }

@@ -7,16 +7,26 @@ import {
   fixAgentSignature,
 } from "../agents/fix-agent.js";
 import { log } from "../adapters/logger.js";
+import {
+  buildDrillIncidentSignal,
+  deriveIncidentSignalFromHealth,
+} from "./incident-signal.js";
 
 export interface ProdIncidentFlowInput {
   /** Optional injected signal; otherwise derived from health check */
   signal?: IncidentSignal;
+  /** Explicit drill when target is healthy (env: LAIKA_INCIDENT_DRILL) */
+  drill?: boolean;
 }
 
 export interface ProdIncidentFlowResult {
   flow: "prod-incident";
-  signal: IncidentSignal;
+  success: boolean;
+  skipped?: boolean;
+  skipReason?: "healthy_no_signal";
+  signal?: IncidentSignal;
   healthChecked: boolean;
+  healthOk?: boolean;
   mergeRequestCreated: boolean;
   mergeRequestUrl?: string;
   slackNotified: boolean;
@@ -32,19 +42,42 @@ export async function runProdIncidentFlow(
   input: ProdIncidentFlowInput = {},
 ): Promise<ProdIncidentFlowResult> {
   const actor = fixAgentActor();
-
   const health = await observability.checkHealth();
-  const signal: IncidentSignal =
-    input.signal ??
-    ({
-      kind: health.ok ? "error_rate" : "health_check_failed",
-      source: "laika-observability-http",
-      message: health.ok
-        ? "Synthetic incident drill (health OK — dry-run path)"
-        : `Health check failed: ${health.statusCode} ${health.bodySnippet}`,
-      observedAt: new Date().toISOString(),
-      metadata: { url: health.url, latencyMs: health.latencyMs },
-    } satisfies IncidentSignal);
+
+  let signal: IncidentSignal | null = input.signal ?? null;
+  if (!signal) {
+    if (health.ok && !input.drill) {
+      log("info", "flow-prod-incident", "Skipping — target healthy, no signal", {
+        url: health.url,
+      });
+      await observability.recordEvent({
+        type: "prod_incident_flow_skipped",
+        flow: "prod-incident",
+        payload: { reason: "healthy_no_signal", healthOk: true, url: health.url },
+        recordedAt: new Date().toISOString(),
+      });
+      return {
+        flow: "prod-incident",
+        success: true,
+        skipped: true,
+        skipReason: "healthy_no_signal",
+        healthChecked: true,
+        healthOk: true,
+        mergeRequestCreated: false,
+        slackNotified: false,
+        dryRunSlack: true,
+        fixAgentSignature: fixAgentSignature(),
+        humanMergeRequired: true,
+      };
+    }
+    signal = input.drill
+      ? buildDrillIncidentSignal(health)
+      : deriveIncidentSignalFromHealth(health);
+  }
+
+  if (!signal) {
+    throw new Error("No incident signal and health check did not indicate failure");
+  }
 
   await observability.ingestSignal(signal);
 
@@ -69,7 +102,7 @@ export async function runProdIncidentFlow(
     text: [
       ":rotating_light: *Laika Path B — supervised incident response*",
       `Signal: ${signal.kind} — ${signal.message}`,
-      `Fix MR (fixture): ${mr.webUrl}`,
+      `Fix MR: ${mr.webUrl}${mr.dryRun ? " (dry-run fixture)" : ""}`,
       "_Human must review and merge. Agents cannot deploy._",
       `Signature: ${fixAgentSignature()}`,
     ].join("\n"),
@@ -82,6 +115,7 @@ export async function runProdIncidentFlow(
       signal,
       mrId: mr.id,
       mrUrl: mr.webUrl,
+      mrDryRun: mr.dryRun,
       slackDryRun: slackResult.dryRun,
     },
     recordedAt: new Date().toISOString(),
@@ -89,8 +123,10 @@ export async function runProdIncidentFlow(
 
   return {
     flow: "prod-incident",
+    success: true,
     signal,
     healthChecked: true,
+    healthOk: health.ok,
     mergeRequestCreated: true,
     mergeRequestUrl: mr.webUrl,
     slackNotified: slackResult.sent,

@@ -75,6 +75,7 @@ See `tests/agents-distinct.test.ts`.
 | `GITHUB_TOKEN` / `GH_TOKEN` | GitHub API for PR context / push dry-run. |
 | `GITHUB_OWNER`, `GITHUB_REPO` | Repo coordinates (defaults `ikrishg` / `laika`). |
 | `LAIKA_PR_NUMBER` | PR number for CLI flow 2. |
+| `LAIKA_INCIDENT_DRILL` | `true` / `1` runs flow 1 against a **healthy** target (otherwise skipped). |
 
 ## Quick start
 

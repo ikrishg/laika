@@ -1,32 +1,28 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { spawn, type ChildProcess } from "node:child_process";
-import path from "node:path";
+import { describe, expect, it, afterAll } from "vitest";
 import { loadConfig } from "../src/config/env.js";
 import { createGitHubAdapter } from "../src/adapters/github.js";
 import { createGitLabAdapter } from "../src/adapters/gitlab.js";
 import { createObservabilityAdapter } from "../src/adapters/observability.js";
 import { runPrExerciseFlow } from "../src/flows/pr-exercise.js";
+import {
+  startSampleApp,
+  waitForHealth,
+} from "./helpers/sample-app-server.js";
 
 describe("flow 2: PR exercise (dry-run)", () => {
-  let server: ChildProcess | null = null;
-
-  beforeAll(async () => {
-    const sampleDir = path.join(process.cwd(), "examples/sample-app");
-    server = spawn("node", ["server.js"], {
-      cwd: sampleDir,
-      env: { ...process.env, PORT: "3457" },
-      stdio: "pipe",
-    });
-    await new Promise((r) => setTimeout(r, 300));
-  });
+  const port = 3457;
+  const baseUrl = `http://localhost:${port}`;
+  const server = startSampleApp(port);
 
   afterAll(() => {
-    server?.kill();
+    server.kill();
   });
 
   it("runs user + hostile agents -> fix on branch -> observability", async () => {
+    await waitForHealth(baseUrl);
+
     process.env.LAIKA_DRY_RUN = "true";
-    process.env.TARGET_APP_URL = "http://localhost:3457";
+    process.env.TARGET_APP_URL = baseUrl;
     delete process.env.GITHUB_TOKEN;
 
     const config = loadConfig();
@@ -41,9 +37,10 @@ describe("flow 2: PR exercise (dry-run)", () => {
     });
 
     expect(result.flow).toBe("pr-exercise");
+    expect(result.success).toBe(true);
     expect(result.userAgent.signature).toContain("laika-user-sim");
     expect(result.hostileAgent.signature).toContain("laika-hostile");
-    expect(result.fixPushed).toBe(true);
+    expect(result.fixPushed).toBe(false);
     expect(result.fixDryRun).toBe(true);
     expect(result.humanMergeRequired).toBe(true);
 
@@ -51,10 +48,16 @@ describe("flow 2: PR exercise (dry-run)", () => {
     const completed = events.find((e) => e.type === "pr_exercise_flow_complete");
     expect(completed).toBeDefined();
     const payload = completed!.payload as {
-      userAgent: { harnessSignature: string };
-      hostileAgent: { harnessSignature: string };
+      userAgent: { harnessSignature: string; findings: string[] };
+      hostileAgent: { harnessSignature: string; findings: string[] };
     };
     expect(payload.userAgent.harnessSignature).toContain("laika-user-sim");
     expect(payload.hostileAgent.harnessSignature).toContain("laika-hostile");
+    expect(
+      payload.userAgent.findings.some((f) => f.includes("User flow OK")),
+    ).toBe(true);
+    expect(
+      payload.hostileAgent.findings.some((f) => f.includes("Hostile:")),
+    ).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import type { GitHubAdapter } from "../adapters/github.js";
 import type { GitLabAdapter } from "../adapters/gitlab.js";
 import type { ObservabilityAdapter } from "../adapters/observability.js";
+import type { PushFixResult } from "../adapters/push-result.js";
 import { runHostileAgent } from "../agents/hostile-agent.js";
 import { runUserAgent } from "../agents/user-agent.js";
 import {
@@ -19,13 +20,40 @@ export interface PrExerciseFlowInput {
 
 export interface PrExerciseFlowResult {
   flow: "pr-exercise";
+  success: boolean;
   prNumber: number;
   userAgent: { signature: string; findingCount: number };
   hostileAgent: { signature: string; findingCount: number };
+  /** True only when a commit was applied on the remote branch */
   fixPushed: boolean;
   fixDryRun: boolean;
+  fixFailureReason?: string;
   observabilityPosted: boolean;
   humanMergeRequired: true;
+}
+
+function evaluatePushOutcome(push: PushFixResult): {
+  success: boolean;
+  fixPushed: boolean;
+  fixDryRun: boolean;
+  fixFailureReason?: string;
+} {
+  if (push.applied) {
+    return { success: true, fixPushed: true, fixDryRun: false };
+  }
+  if (push.dryRun) {
+    return {
+      success: true,
+      fixPushed: false,
+      fixDryRun: true,
+    };
+  }
+  return {
+    success: false,
+    fixPushed: false,
+    fixDryRun: false,
+    fixFailureReason: push.reason ?? "fix_not_applied",
+  };
 }
 
 export async function runPrExerciseFlow(
@@ -64,25 +92,27 @@ export async function runPrExerciseFlow(
     hostileResult.suggestedFix,
   );
 
-  let fixDryRun = true;
+  let push: PushFixResult;
   if (forge === "github") {
-    const push = await github.pushFixToPullRequestBranch(
+    push = await github.pushFixToPullRequestBranch(
       input.prNumber,
       proposal.patchSummary,
       fixActor,
     );
-    fixDryRun = push.dryRun;
   } else {
-    const push = await gitlab.pushFixToBranch(
+    push = await gitlab.pushFixToBranch(
       pr.headRef,
       proposal.patchSummary,
       fixActor,
     );
-    fixDryRun = push.dryRun;
   }
 
+  const outcome = evaluatePushOutcome(push);
+
   await observability.recordEvent({
-    type: "pr_exercise_flow_complete",
+    type: outcome.success
+      ? "pr_exercise_flow_complete"
+      : "pr_exercise_flow_failed",
     flow: "pr-exercise",
     payload: {
       prNumber: input.prNumber,
@@ -93,6 +123,7 @@ export async function runPrExerciseFlow(
         title: proposal.title,
         patchSummary: proposal.patchSummary,
       },
+      fixPush: push,
       fixAgentSignature: fixAgentSignature(),
     },
     recordedAt: new Date().toISOString(),
@@ -100,6 +131,7 @@ export async function runPrExerciseFlow(
 
   return {
     flow: "pr-exercise",
+    success: outcome.success,
     prNumber: input.prNumber,
     userAgent: {
       signature: userResult.harnessSignature,
@@ -109,8 +141,9 @@ export async function runPrExerciseFlow(
       signature: hostileResult.harnessSignature,
       findingCount: hostileResult.findings.length,
     },
-    fixPushed: true,
-    fixDryRun,
+    fixPushed: outcome.fixPushed,
+    fixDryRun: outcome.fixDryRun,
+    fixFailureReason: outcome.fixFailureReason,
     observabilityPosted: true,
     humanMergeRequired: true,
   };

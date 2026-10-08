@@ -30,6 +30,8 @@ describe("flow 1: prod incident (dry-run)", () => {
     });
 
     expect(result.flow).toBe("prod-incident");
+    expect(result.success).toBe(true);
+    expect(result.skipped).toBeUndefined();
     expect(result.mergeRequestCreated).toBe(true);
     expect(result.humanMergeRequired).toBe(true);
     expect(result.dryRunSlack).toBe(true);

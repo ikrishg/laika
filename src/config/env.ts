@@ -7,6 +7,7 @@ export interface HarnessConfig {
   githubToken: string | null;
   githubOwner: string | null;
   githubRepo: string | null;
+  incidentDrill: boolean;
 }
 
 function env(name: string): string | undefined {
@@ -35,5 +36,8 @@ export function loadConfig(): HarnessConfig {
     githubToken,
     githubOwner: env("GITHUB_OWNER") ?? env("GITHUB_REPOSITORY_OWNER") ?? null,
     githubRepo: env("GITHUB_REPO") ?? null,
+    incidentDrill:
+      process.env.LAIKA_INCIDENT_DRILL === "1" ||
+      process.env.LAIKA_INCIDENT_DRILL === "true",
   };
 }

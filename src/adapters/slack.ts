@@ -1,4 +1,5 @@
 import type { HarnessConfig } from "../config/env.js";
+import { fetchWithTimeout } from "./http.js";
 import { log } from "./logger.js";
 
 export interface SlackMessage {
@@ -21,7 +22,7 @@ export function createSlackAdapter(config: HarnessConfig): SlackAdapter {
         return { sent: false, dryRun: true };
       }
 
-      const res = await fetch(config.slackWebhookUrl, {
+      const res = await fetchWithTimeout(config.slackWebhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(message),
